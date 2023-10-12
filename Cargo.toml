@@ -1,0 +1,24 @@
+[package]
+name = "kc-rs"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = ["middleware"]
+middleware = ["middleware-tonic"]
+middleware-tonic = ["middleware", "tonic"]
+
+[dependencies]
+chrono = { version = "0.4.31", features = ["serde"] }
+jsonwebtoken = { git = "https://github.com/nick9822/jsonwebtoken", branch = "algs-facade" }
+reqwest = { version = "0", features = ["json", "blocking"] }
+serde = { version = "1", features = ["derive"] }
+serde_with = { version = "3", features = ["chrono_0_4"] }
+thiserror = { version = "1.0.49" }
+tokio = { version = "1.33.0", features = ["full"] }
+url = { version = "2.4.1", features = ["serde"] }
+uuid = { version = "1", features = ["serde"] }
+tracing = "0"
+
+# optional dependencies
+tonic = { version = "0", default-features = false, optional = true }
