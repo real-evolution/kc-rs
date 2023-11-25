@@ -1,7 +1,7 @@
 use std::{fmt, str::FromStr};
 
-use jsonwebtoken as jwt;
-use jwt::{
+use jsonwebtoken::{
+    self as jwt,
     errors::{Error as JwtError, ErrorKind as JwtErrorKind},
     Algorithm,
 };
