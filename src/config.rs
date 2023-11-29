@@ -1,29 +1,98 @@
-use crate::ClientGrant;
+use serde::Deserialize;
+use url::Url;
 
-#[derive(Debug, serde::Deserialize)]
+use crate::Result;
+
+#[derive(Debug, Deserialize)]
 pub struct Config {
-    pub realm: String,
-    pub client_id: String,
-    pub client_secret: ClientSecret,
-    #[serde(rename = "auth_server_url")]
-    pub auth_server: url::Url,
+    pub client: ClientConfig,
+    pub token: TokenConfig,
+    pub http: HttpConfig,
 }
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, Deserialize)]
+pub struct ClientConfig {
+    pub id: String,
+    pub secret: ClientSecret,
+    pub realm: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TokenConfig {
+    pub issuer: Option<Vec<String>>,
+    pub audience: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct HttpConfig {
+    pub auth_server_url: Url,
+
+    #[serde(default = "default_http_user_agent")]
+    pub user_agent: String,
+
+    #[serde(default = "default_http_https_only")]
+    pub https_only: bool,
+}
+
+#[derive(Debug, Deserialize)]
 #[serde(untagged)]
 pub enum ClientSecret {
     Basic(String),
 }
 
+#[derive(Debug, Clone)]
+pub struct ServerEndpoints {
+    pub issuer: Url,
+    pub auth: Url,
+    pub token: Url,
+    pub introspect: Url,
+    pub jwks: Url,
+}
+
 impl Config {
-    pub fn token_grant(&self) -> ClientGrant<'_> {
-        match self.client_secret {
-            | ClientSecret::Basic(ref secret) => {
-                ClientGrant::ClientCredentials {
-                    id: self.client_id.as_str(),
-                    secret,
-                }
-            }
+    pub(crate) fn urls(&self) -> Result<ServerEndpoints> {
+        if self.http.auth_server_url.cannot_be_a_base() {
+            return Err(url::ParseError::RelativeUrlWithoutBase)?;
         }
+
+        let mut issuer = self.http.auth_server_url.clone();
+        issuer
+            .path_segments_mut()
+            .unwrap()
+            .push("realms")
+            .push(&self.client.realm);
+
+        let oidc = build_url(issuer.clone(), "protocol/openid-connect");
+        let auth = build_url(oidc.clone(), "auth");
+        let token = build_url(oidc.clone(), "token");
+        let introspect = build_url(oidc.clone(), "introspect");
+        let jwks = build_url(oidc.clone(), "certs");
+
+        Ok(ServerEndpoints {
+            issuer,
+            auth,
+            token,
+            introspect,
+            jwks,
+        })
     }
+}
+
+#[inline]
+fn build_url(mut base: Url, path: &str) -> Url {
+    base.path_segments_mut().unwrap().extend(path.split('/'));
+    base
+}
+
+#[inline]
+fn default_http_user_agent() -> String {
+    const USER_AGENT: &'static str =
+        concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
+
+    String::from(USER_AGENT)
+}
+
+#[inline]
+fn default_http_https_only() -> bool {
+    false
 }

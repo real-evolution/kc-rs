@@ -6,6 +6,8 @@ use jsonwebtoken::{
     Algorithm,
 };
 
+use crate::{Config, Result};
+
 const REQUIRED_CLAIMS: &[&str] = &[
     "iss",
     "sub",
@@ -32,15 +34,14 @@ struct Jwk {
 
 impl JwtDecoder {
     #[inline]
-    pub async fn new(client: &crate::Client) -> crate::Result<Self> {
-        let certs = client.certs().await?;
-        let keys = certs
+    pub fn new(jwks: jwt::jwk::JwkSet, config: &Config) -> Self {
+        let keys = jwks
             .keys
             .into_iter()
-            .filter_map(|jwk| Jwk::new(jwk, client.urls().issuer.as_ref()).ok())
+            .filter_map(|jwk| Jwk::new(jwk, config).ok())
             .collect();
 
-        Ok(Self { keys })
+        Self { keys }
     }
 
     #[inline]
@@ -69,7 +70,7 @@ impl JwtDecoder {
 
 impl Jwk {
     #[inline]
-    fn new(jwk: jwt::jwk::Jwk, issuer: &str) -> crate::Result<Self> {
+    fn new(jwk: jwt::jwk::Jwk, config: &Config) -> Result<Self> {
         let alg_name = jwk.common.key_algorithm.unwrap().to_string();
 
         let alg = Algorithm::from_str(alg_name.as_str())?;
@@ -78,7 +79,16 @@ impl Jwk {
 
         let mut vld = jwt::Validation::new(alg);
         vld.set_required_spec_claims(REQUIRED_CLAIMS);
-        vld.set_issuer(&[issuer]);
+
+        match config.token.issuer.as_deref() {
+            | Some(issuer) => vld.set_issuer(issuer),
+            | None => vld.set_issuer(&[config.urls()?.issuer.as_str()]),
+        }
+
+        match config.token.audience.as_deref() {
+            | Some(audience) => vld.set_audience(audience),
+            | None => vld.set_issuer(&[&config.client.id]),
+        }
 
         Ok(Self { kid, key, vld })
     }
