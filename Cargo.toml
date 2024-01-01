@@ -49,3 +49,20 @@ features = ["serde"]
 version = "0.10"
 default-features = false
 optional = true
+
+[dependencies.tower]
+version = "0.4"
+default-features = false
+
+[dependencies.http]
+version = "0.2"
+
+[dependencies.tokio]
+version = "1.35"
+default-features = false
+features = ["sync"]
+
+[dependencies.arcstr]
+version = "1.1"
+default-features = false
+features = ["serde"]

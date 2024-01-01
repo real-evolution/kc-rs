@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use serde_with::{DurationSeconds, TimestampSeconds};
+use serde_with::TimestampSeconds;
 
 pub type Token = jsonwebtoken::TokenData<Claims>;
 
@@ -42,25 +42,6 @@ pub struct Claims {
 pub struct RolesClaim {
     #[serde(rename = "roles")]
     pub roles: Vec<String>,
-}
-
-#[serde_with::serde_as]
-#[derive(Debug, serde::Deserialize)]
-pub struct TokenContainer {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub token_type: Option<String>,
-
-    #[serde(rename = "access_token")]
-    pub access_token: String,
-
-    #[serde_as(as = "DurationSeconds<i64>")]
-    pub expires_in: chrono::Duration,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub refresh_token: Option<String>,
-
-    #[serde_as(as = "Option<DurationSeconds<i64>>")]
-    pub refresh_expires_in: Option<chrono::Duration>,
 }
 
 impl Claims {

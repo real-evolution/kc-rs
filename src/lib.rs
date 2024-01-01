@@ -6,19 +6,25 @@ mod token;
 #[cfg(feature = "middleware")]
 pub mod middleware;
 
-use std::sync::Arc;
+use std::{ops::Add, sync::Arc};
 
-pub use config::Config;
-pub use error::{Error, Result};
-pub use jwt::JwtDecoder;
-pub use token::{Claims, Token, TokenContainer};
+use serde_with::DurationSeconds;
+use tokio::sync::RwLock;
+
+pub use self::{
+    config::{Config, ServerEndpoints},
+    error::{Error, Result},
+    jwt::JwtDecoder,
+    token::{Claims, Token},
+};
 
 #[derive(Debug)]
 pub struct ReCloak {
     client: reqwest::Client,
     decoder: JwtDecoder,
     config: Config,
-    urls: config::ServerEndpoints,
+    urls: ServerEndpoints,
+    token: RwLock<Option<TokenResponse>>,
 }
 
 impl ReCloak {
@@ -44,28 +50,61 @@ impl ReCloak {
             client,
             decoder,
             urls,
+            token: Default::default(),
         }))
     }
 
     pub async fn login_client(
         &self,
         creds: ClientGrant<'_>,
-    ) -> Result<TokenContainer> {
+    ) -> Result<TokenResponse> {
         self.client
             .post(self.urls.token.clone())
             .form(&creds)
             .send()
             .await?
-            .json::<TokenContainer>()
+            .json::<TokenResponse>()
             .await
-            .map_err(Into::into)
+            .map_err(From::from)
+    }
+
+    pub async fn authenticate(&self) -> Result<arcstr::ArcStr> {
+        let token = self.token.read().await;
+
+        if let Some(token) = token.as_ref() {
+            if !token.is_access_expired() {
+                return Ok(token.access_token.clone());
+            }
+
+            if let Some(refresh_token) = token.valid_refresh_token() {
+                let token_resp = self
+                    .login_client(ClientGrant::RefreshToken { refresh_token })
+                    .await?;
+                let access_token = token_resp.access_token.clone();
+
+                *self.token.write().await = Some(token_resp);
+
+                return Ok(access_token);
+            }
+        }
+
+        let id = self.config.client.id.as_str();
+        let secret = match self.config.client.secret {
+            | config::ClientSecret::Basic(ref secret) => secret,
+        };
+
+        let token_resp = self
+            .login_client(ClientGrant::ClientCredentials { id, secret })
+            .await?;
+        let access_token = token_resp.access_token.clone();
+
+        *self.token.write().await = Some(token_resp);
+
+        Ok(access_token)
     }
 
     #[inline]
-    pub fn decode_token(
-        &self,
-        token: impl AsRef<str>,
-    ) -> crate::Result<crate::Token> {
+    pub fn decode_token(&self, token: impl AsRef<str>) -> Result<Token> {
         self.decoder.decode(token)
     }
 
@@ -91,7 +130,7 @@ impl ReCloak {
             .await?
             .json()
             .await
-            .map_err(Into::into)
+            .map_err(From::from)
     }
 }
 
@@ -106,4 +145,57 @@ pub enum ClientGrant<'a> {
         #[serde(rename = "client_secret")]
         secret: &'a str,
     },
+
+    #[serde(rename = "refresh_token")]
+    RefreshToken {
+        #[serde(rename = "refresh_token")]
+        refresh_token: &'a str,
+    },
+}
+
+#[derive(Debug, Clone, Copy, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TokenType {
+    Bearer,
+}
+
+#[serde_with::serde_as]
+#[derive(Debug, serde::Deserialize)]
+pub struct TokenResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub token_type: Option<TokenType>,
+
+    #[serde(rename = "access_token")]
+    pub access_token: arcstr::ArcStr,
+
+    #[serde_as(as = "DurationSeconds<i64>")]
+    pub expires_in: chrono::Duration,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refresh_token: Option<arcstr::ArcStr>,
+
+    #[serde_as(as = "Option<DurationSeconds<i64>>")]
+    pub refresh_expires_in: Option<chrono::Duration>,
+
+    #[serde(skip, default = "chrono::Local::now")]
+    issued_at: chrono::DateTime<chrono::Local>,
+}
+
+impl TokenResponse {
+    #[inline]
+    fn is_access_expired(&self) -> bool {
+        self.issued_at + self.expires_in < chrono::Local::now()
+    }
+
+    fn valid_refresh_token(&self) -> Option<&str> {
+        match (&self.refresh_token, &self.refresh_expires_in) {
+            | (Some(rt), None) => Some(rt.as_str()),
+            | (Some(rt), Some(d))
+                if self.issued_at.add(*d) > chrono::Local::now() =>
+            {
+                Some(rt.as_str())
+            }
+            | _ => None,
+        }
+    }
 }
