@@ -6,12 +6,21 @@ edition = "2021"
 [features]
 default = ["middleware"]
 authz = []
-middleware = ["tonic"]
+middleware = ["dep:http", "dep:tonic", "dep:tower"]
+
+[dependencies.arcstr]
+version = "1.1"
+default-features = false
+features = ["serde"]
 
 [dependencies.chrono]
 version = "0.4"
 default-features = false
 features = ["serde"]
+
+[dependencies.http]
+version = "0.2"
+optional = true
 
 [dependencies.jsonwebtoken]
 version = "9.2"
@@ -32,6 +41,21 @@ features = ["chrono"]
 version = "1.0"
 default-features = false
 
+[dependencies.tokio]
+version = "1.35"
+default-features = false
+features = ["sync"]
+
+[dependencies.tonic]
+version = "0.10"
+default-features = false
+optional = true
+
+[dependencies.tower]
+version = "0.4"
+default-features = false
+optional = true
+
 [dependencies.tracing]
 version = "0.1"
 default-features = false
@@ -43,26 +67,4 @@ features = ["serde"]
 
 [dependencies.uuid]
 version = "1.6"
-features = ["serde"]
-
-[dependencies.tonic]
-version = "0.10"
-default-features = false
-optional = true
-
-[dependencies.tower]
-version = "0.4"
-default-features = false
-
-[dependencies.http]
-version = "0.2"
-
-[dependencies.tokio]
-version = "1.35"
-default-features = false
-features = ["sync"]
-
-[dependencies.arcstr]
-version = "1.1"
-default-features = false
 features = ["serde"]

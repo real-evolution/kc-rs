@@ -9,8 +9,6 @@ use std::{
 use http::{header::AUTHORIZATION, Request};
 use tower::{Layer, Service};
 
-use crate::ReCloak;
-
 const BEARER_TOKEN_PREFIX: &'static str = "Bearer ";
 
 pub type ServerAuthService<S> = AuthService<S, ServerMode>;
@@ -32,14 +30,14 @@ pub struct ClientMode;
 
 #[derive(Debug, Clone)]
 pub struct AuthService<S, M> {
-    kc: Arc<ReCloak>,
+    kc: Arc<crate::ReCloak>,
     inner: S,
     _marker: PhantomData<M>,
 }
 
 #[derive(Debug, Clone)]
 pub struct AuthServiceLayer<M = ()> {
-    kc: Arc<ReCloak>,
+    kc: Arc<crate::ReCloak>,
     _marker: PhantomData<M>,
 }
 
@@ -52,7 +50,7 @@ enum ServerAuthError {
 
 impl ServerAuthServiceLayer {
     #[inline]
-    pub const fn new(kc: Arc<ReCloak>) -> Self {
+    pub const fn new(kc: Arc<crate::ReCloak>) -> Self {
         AuthServiceLayer {
             kc,
             _marker: PhantomData,
@@ -62,7 +60,7 @@ impl ServerAuthServiceLayer {
 
 impl ClientAuthServiceLayer {
     #[inline]
-    pub const fn new(kc: Arc<ReCloak>) -> Self {
+    pub const fn new(kc: Arc<crate::ReCloak>) -> Self {
         AuthServiceLayer {
             kc,
             _marker: PhantomData,
@@ -105,7 +103,11 @@ where
 
             let header_str = auth_header
                 .to_str()
-                .map_err(|_| ServerAuthError::InvalidHeader)?;
+                .map_err(|err| {
+                    tracing::error!(error = %err, "failed to parse authorization header");
+
+                    ServerAuthError::InvalidHeader
+                })?;
 
             let bearer = header_str
                 .strip_prefix(BEARER_TOKEN_PREFIX)
@@ -113,7 +115,11 @@ where
 
             let token = kc
                 .decode_token(bearer)
-                .map_err(|_| ServerAuthError::InvalidToken)?;
+                .map_err(|err| {
+                    tracing::error!(error = %err, "failed to parse authorization header");
+
+                    ServerAuthError::InvalidToken
+                })?;
 
             req.extensions_mut().insert(token.clone());
 
