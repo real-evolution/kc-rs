@@ -47,7 +47,7 @@ impl JwtDecoder {
     #[inline]
     pub fn decode(
         &self,
-        token: impl AsRef<str>,
+        token: &str,
     ) -> crate::Result<jwt::TokenData<crate::Claims>> {
         self.get_key_for(token.as_ref())?.decode(token)
     }
@@ -94,10 +94,8 @@ impl Jwk {
     }
 
     #[inline]
-    fn decode(&self, token: impl AsRef<str>) -> crate::Result<crate::Token> {
-        let token = jwt::decode(token.as_ref(), &self.key, &self.vld)?;
-
-        Ok(token)
+    fn decode(&self, token: &str) -> crate::Result<crate::Token> {
+        jwt::decode(token, &self.key, &self.vld).map_err(From::from)
     }
 }
 
