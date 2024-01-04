@@ -59,14 +59,30 @@ impl ReCloak {
         &self,
         creds: ClientGrant<'_>,
     ) -> Result<TokenResponse> {
-        self.client
+        #[derive(serde::Deserialize)]
+        struct ErrorDto {
+            error: String,
+            error_description: Option<String>,
+        }
+
+        let resp = self
+            .client
             .post(self.urls.token.clone())
             .form(&creds)
             .send()
-            .await?
-            .json::<TokenResponse>()
-            .await
-            .map_err(From::from)
+            .await?;
+
+        if resp.status().is_success() {
+            resp.json::<TokenResponse>().await.map_err(From::from)
+        } else {
+            let err =
+                resp.json::<ErrorDto>().await.map_err(crate::Error::from)?;
+
+            Err(crate::Error::Authentication {
+                code: err.error,
+                description: err.error_description,
+            })
+        }
     }
 
     #[tracing::instrument(skip(self))]

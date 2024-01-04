@@ -13,4 +13,10 @@ pub enum Error {
 
     #[error("uuid error: {0}")]
     Uuid(#[from] uuid::Error),
+
+    #[error("authentication error: code={code}, description={description:?}")]
+    Authentication {
+        code: String,
+        description: Option<String>,
+    },
 }
