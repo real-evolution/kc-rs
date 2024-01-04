@@ -87,9 +87,7 @@ impl ReCloak {
 
     #[tracing::instrument(skip(self))]
     pub async fn authenticate(&self) -> Result<arcstr::ArcStr> {
-        let token = self.token.read().await;
-
-        if let Some(token) = token.as_ref() {
+        if let Some(token) = self.token.read().await.as_ref() {
             if !token.is_access_expired() {
                 return Ok(token.access_token.clone());
             }
