@@ -96,6 +96,7 @@ impl ReCloak {
                 let token_resp = self
                     .login_client(ClientGrant::RefreshToken { refresh_token })
                     .await?;
+
                 let access_token = token_resp.access_token.clone();
 
                 *self.token.write().await = Some(token_resp);
@@ -120,7 +121,8 @@ impl ReCloak {
     }
 
     #[inline]
-    pub fn decode_token(&self, token: impl AsRef<str>) -> Result<Token> {
+    #[tracing::instrument(skip(self))]
+    pub fn decode_token(&self, token: &str) -> Result<Token> {
         self.decoder.decode(token)
     }
 
@@ -171,8 +173,8 @@ pub enum ClientGrant<'a> {
 }
 
 #[derive(Debug, Clone, Copy, serde::Deserialize)]
-#[serde(rename_all = "snake_case")]
 pub enum TokenType {
+    #[serde(alias = "bearer")]
     Bearer,
 }
 
