@@ -121,7 +121,7 @@ where
                     ServerAuthError::InvalidToken
                 })?;
 
-            req.extensions_mut().insert(token.clone());
+            req.extensions_mut().insert(token.claims);
 
             inner.call(req).await
         })
