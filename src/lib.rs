@@ -54,6 +54,7 @@ impl ReCloak {
         }))
     }
 
+    #[tracing::instrument(skip(self, creds))]
     pub async fn login_client(
         &self,
         creds: ClientGrant<'_>,
@@ -68,6 +69,7 @@ impl ReCloak {
             .map_err(From::from)
     }
 
+    #[tracing::instrument(skip(self))]
     pub async fn authenticate(&self) -> Result<arcstr::ArcStr> {
         let token = self.token.read().await;
 
@@ -118,6 +120,7 @@ impl ReCloak {
         &self.config
     }
 
+    #[tracing::instrument]
     async fn get_certs(
         client: &reqwest::Client,
         url: url::Url,
