@@ -11,11 +11,11 @@ use tower::{Layer, Service};
 
 const BEARER_TOKEN_PREFIX: &'static str = "Bearer ";
 
-pub type ServerAuthService<S> = AuthService<S, ServerMode>;
-pub type ClientAuthService<S> = AuthService<S, ClientMode>;
+pub type ServerAuthService<S, E = BoxError> = AuthService<S, ServerMode, E>;
+pub type ClientAuthService<S, E = BoxError> = AuthService<S, ClientMode, E>;
 
-pub type ServerAuthServiceLayer = AuthServiceLayer<ServerMode>;
-pub type ClientAuthServiceLayer = AuthServiceLayer<ClientMode>;
+pub type ServerAuthServiceLayer<E = BoxError> = AuthServiceLayer<ServerMode, E>;
+pub type ClientAuthServiceLayer<E = BoxError> = AuthServiceLayer<ClientMode, E>;
 
 type BoxError = Box<dyn std::error::Error + Send + Sync>;
 type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
@@ -28,17 +28,17 @@ pub struct ServerMode;
 #[doc(hidden)]
 pub struct ClientMode;
 
-#[derive(Debug, Clone)]
-pub struct AuthService<S, M> {
+#[derive(Debug)]
+pub struct AuthService<S, M, E> {
     kc: Arc<crate::ReCloak>,
     inner: S,
-    _marker: PhantomData<M>,
+    _marker: PhantomData<(M, E)>,
 }
 
 #[derive(Debug, Clone)]
-pub struct AuthServiceLayer<M = ()> {
+pub struct AuthServiceLayer<M, E> {
     kc: Arc<crate::ReCloak>,
-    _marker: PhantomData<M>,
+    _marker: PhantomData<(M, E)>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -50,15 +50,22 @@ enum ServerAuthError {
 
 impl ServerAuthServiceLayer {
     #[inline]
-    pub const fn new(kc: Arc<crate::ReCloak>) -> Self {
+    pub const fn new<E>(kc: Arc<crate::ReCloak>) -> ServerAuthServiceLayer<E> {
         AuthServiceLayer {
             kc,
             _marker: PhantomData,
         }
     }
+
+    #[inline]
+    pub const fn for_grpc(
+        kc: Arc<crate::ReCloak>,
+    ) -> ServerAuthServiceLayer<tonic::Status> {
+        ServerAuthServiceLayer::new(kc)
+    }
 }
 
-impl ClientAuthServiceLayer {
+impl<E> ClientAuthServiceLayer<E> {
     #[inline]
     pub const fn new(kc: Arc<crate::ReCloak>) -> Self {
         AuthServiceLayer {
@@ -68,12 +75,13 @@ impl ClientAuthServiceLayer {
     }
 }
 
-impl<S, B> Service<Request<B>> for ServerAuthService<S>
+impl<S, E, B> Service<Request<B>> for ServerAuthService<S, E>
 where
     S: Service<Request<B>> + Clone + Send + 'static,
-    S::Error: From<ServerAuthError>,
+    S::Error: From<E>,
     S::Future: Send + 'static,
     B: Send + 'static,
+    E: From<ServerAuthError>,
 {
     type Error = S::Error;
     type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
@@ -99,26 +107,26 @@ where
             let auth_header = req
                 .headers()
                 .get(AUTHORIZATION)
-                .ok_or(ServerAuthError::MissingHeader)?;
+                .ok_or(ServerAuthError::MissingHeader.into())?;
 
             let header_str = auth_header
                 .to_str()
                 .map_err(|err| {
                     tracing::error!(error = %err, "failed to parse authorization header");
 
-                    ServerAuthError::InvalidHeader
+                    ServerAuthError::InvalidHeader.into()
                 })?;
 
             let bearer = header_str
                 .strip_prefix(BEARER_TOKEN_PREFIX)
-                .ok_or(ServerAuthError::InvalidToken)?;
+                .ok_or(ServerAuthError::InvalidToken.into())?;
 
             let token = kc
                 .decode_token(bearer)
                 .map_err(|err| {
                     tracing::error!(error = %err, "failed to parse authorization header");
 
-                    ServerAuthError::InvalidToken
+                    ServerAuthError::InvalidToken.into()
                 })?;
 
             req.extensions_mut().insert(token.claims);
@@ -128,11 +136,11 @@ where
     }
 }
 
-impl<S, B> Service<Request<B>> for ClientAuthService<S>
+impl<S, E, B> Service<Request<B>> for ClientAuthService<S, E>
 where
     S: Service<Request<B>> + Clone + Send + 'static,
-    S::Error: Into<BoxError>,
     S::Future: Send + 'static,
+    E: From<S::Error>,
     B: Send + 'static,
 {
     type Error = S::Error;
@@ -186,8 +194,8 @@ where
     }
 }
 
-impl<S, M> Layer<S> for AuthServiceLayer<M> {
-    type Service = AuthService<S, M>;
+impl<S, M, E> Layer<S> for AuthServiceLayer<M, E> {
+    type Service = AuthService<S, M, E>;
 
     #[inline]
     fn layer(&self, inner: S) -> Self::Service {
@@ -199,10 +207,25 @@ impl<S, M> Layer<S> for AuthServiceLayer<M> {
     }
 }
 
+impl<S, M, E> Clone for AuthService<S, M, E>
+where
+    S: Clone,
+{
+    #[inline]
+    fn clone(&self) -> Self {
+        Self {
+            kc: self.kc.clone(),
+            inner: self.inner.clone(),
+            _marker: PhantomData,
+        }
+    }
+}
+
 impl std::fmt::Display for ServerAuthError {
     #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use ServerAuthError::*;
+
         match self {
             | MissingHeader => write!(f, "missing authorization header"),
             | InvalidHeader => write!(f, "invalid authorization header"),
