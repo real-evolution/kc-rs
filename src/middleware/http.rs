@@ -21,6 +21,12 @@ type BoxError = Box<dyn std::error::Error + Send + Sync>;
 type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 #[derive(Debug, Clone)]
+pub struct RequestAuthorization {
+    claims: crate::Claims,
+    auth_header: http::HeaderValue,
+}
+
+#[derive(Debug, Clone)]
 #[doc(hidden)]
 pub struct ServerMode;
 
@@ -107,7 +113,8 @@ where
             let auth_header = req
                 .headers()
                 .get(AUTHORIZATION)
-                .ok_or(ServerAuthError::MissingHeader.into())?;
+                .ok_or(ServerAuthError::MissingHeader.into())?
+                .clone();
 
             let header_str = auth_header
                 .to_str()
@@ -129,7 +136,10 @@ where
                     ServerAuthError::InvalidToken.into()
                 })?;
 
-            req.extensions_mut().insert(token.claims);
+            req.extensions_mut().insert(RequestAuthorization {
+                claims: token.claims,
+                auth_header,
+            });
 
             inner.call(req).await
         })
@@ -240,5 +250,17 @@ impl From<ServerAuthError> for tonic::Status {
     #[inline]
     fn from(value: ServerAuthError) -> Self {
         tonic::Status::unauthenticated(value.to_string())
+    }
+}
+
+impl RequestAuthorization {
+    #[inline]
+    pub const fn claims(&self) -> &crate::Claims {
+        &self.claims
+    }
+
+    #[inline]
+    pub fn authorization_header(&self) -> &str {
+        unsafe { std::str::from_utf8_unchecked(self.auth_header.as_bytes()) }
     }
 }
