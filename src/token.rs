@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use serde_with::TimestampSeconds;
 
-pub type Token = jsonwebtoken::TokenData<Claims>;
+pub type TokenData = jsonwebtoken::TokenData<Claims>;
 
 #[serde_with::serde_as]
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]

@@ -94,7 +94,7 @@ impl Jwk {
     }
 
     #[inline]
-    fn decode(&self, token: &str) -> crate::Result<crate::Token> {
+    fn decode(&self, token: &str) -> crate::Result<crate::TokenData> {
         jwt::decode(token, &self.key, &self.vld).map_err(From::from)
     }
 }

@@ -15,7 +15,7 @@ pub use self::{
     config::{Config, ServerEndpoints},
     error::{Error, Result},
     jwt::JwtDecoder,
-    token::{Claims, Token},
+    token::{Claims, TokenData},
 };
 
 #[derive(Debug)]
@@ -122,7 +122,7 @@ impl ReCloak {
 
     #[inline]
     #[tracing::instrument(skip(self))]
-    pub fn decode_token(&self, token: &str) -> Result<Token> {
+    pub fn decode_token(&self, token: &str) -> Result<TokenData> {
         self.decoder.decode(token)
     }
 
