@@ -96,7 +96,7 @@ where
     }
 
     fn call(&mut self, mut req: Request<B>) -> Self::Future {
-        if req.extensions().get::<crate::Token>().is_some() {
+        if req.extensions().get::<crate::Claims>().is_some() {
             return Box::pin(self.inner.call(req));
         }
 
