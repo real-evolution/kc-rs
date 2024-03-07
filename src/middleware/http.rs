@@ -1,15 +1,17 @@
 use std::{
     future::Future,
     marker::PhantomData,
-    pin::Pin,
     sync::Arc,
     task::{Context, Poll},
 };
 
-use http::{header::AUTHORIZATION, Request};
+use bytes::{BufMut, BytesMut};
+use http::{header::AUTHORIZATION, HeaderValue, Request};
 use tower::{Layer, Service};
 
-const BEARER_TOKEN_PREFIX: &'static str = "Bearer ";
+const BEARER_TOKEN_PREFIX: &str = "Bearer ";
+
+type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
 pub type ServerAuthService<S, E = BoxError> = AuthService<S, ServerMode, E>;
 pub type ClientAuthService<S, E = BoxError> = AuthService<S, ClientMode, E>;
@@ -17,13 +19,10 @@ pub type ClientAuthService<S, E = BoxError> = AuthService<S, ClientMode, E>;
 pub type ServerAuthServiceLayer<E = BoxError> = AuthServiceLayer<ServerMode, E>;
 pub type ClientAuthServiceLayer<E = BoxError> = AuthServiceLayer<ClientMode, E>;
 
-type BoxError = Box<dyn std::error::Error + Send + Sync>;
-type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
-
 #[derive(Debug, Clone)]
 pub struct RequestAuthorization {
     claims: crate::Claims,
-    auth_header: http::HeaderValue,
+    auth_header: HeaderValue,
 }
 
 #[derive(Debug, Clone)]
@@ -90,8 +89,9 @@ where
     E: From<ServerAuthError>,
 {
     type Error = S::Error;
-    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
     type Response = S::Response;
+
+    type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
 
     #[inline]
     fn poll_ready(
@@ -102,14 +102,14 @@ where
     }
 
     fn call(&mut self, mut req: Request<B>) -> Self::Future {
-        if req.extensions().get::<crate::Claims>().is_some() {
-            return Box::pin(self.inner.call(req));
-        }
-
         let Self { kc, inner, .. } = self.clone();
         let mut inner = std::mem::replace(&mut self.inner, inner);
 
-        Box::pin(async move {
+        async move {
+            if req.extensions().get::<crate::Claims>().is_some() {
+                return inner.call(req).await;
+            }
+
             let auth_header = req
                 .headers()
                 .get(AUTHORIZATION)
@@ -142,7 +142,7 @@ where
             });
 
             inner.call(req).await
-        })
+        }
     }
 }
 
@@ -154,8 +154,9 @@ where
     B: Send + 'static,
 {
     type Error = S::Error;
-    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
     type Response = S::Response;
+
+    type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
 
     #[inline]
     fn poll_ready(
@@ -166,31 +167,30 @@ where
     }
 
     fn call(&mut self, mut req: Request<B>) -> Self::Future {
-        if req.headers().contains_key(AUTHORIZATION) {
-            return Box::pin(self.inner.call(req));
-        }
-
         let Self { kc, inner, .. } = self.clone();
         let mut inner = std::mem::replace(&mut self.inner, inner);
 
-        Box::pin(async move {
+        async move {
+            if req.extensions().get::<crate::Claims>().is_some() {
+                return inner.call(req).await;
+            }
+
             match kc.authenticate().await {
                 | Ok(token) => {
-                    let mut bearer = String::with_capacity(
-                        BEARER_TOKEN_PREFIX.len() + token.len(),
+                    let mut buf = BytesMut::with_capacity(
+                        BEARER_TOKEN_PREFIX.len() + token.as_bytes().len(),
                     );
 
-                    bearer.push_str(BEARER_TOKEN_PREFIX);
-                    bearer.push_str(&token);
+                    buf.put(BEARER_TOKEN_PREFIX.as_bytes());
+                    buf.put_slice(token.as_bytes());
 
-                    match bearer.parse() {
-                        | Ok(value) => {
-                            req.headers_mut().insert(AUTHORIZATION, value);
-                        }
-                        | Err(err) => {
-                            tracing::error!(error = %err, "failed to construct bearer token")
-                        }
+                    // Safety: we know the buffer is valid utf-8, since we
+                    // the token always comes from a valid source.
+                    let value = unsafe {
+                        HeaderValue::from_maybe_shared_unchecked(buf.freeze())
                     };
+
+                    req.headers_mut().insert(AUTHORIZATION, value);
                 }
                 | Err(err) => {
                     tracing::error!(error = %err, "failed to authenticate, proceeding without token");
@@ -200,7 +200,7 @@ where
             };
 
             inner.call(req).await
-        })
+        }
     }
 }
 
