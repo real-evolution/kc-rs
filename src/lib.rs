@@ -113,7 +113,11 @@ impl ReCloak {
         };
 
         let token_resp = self
-            .login_client(ClientGrant::ClientCredentials { id, secret })
+            .login_client(ClientGrant::ClientCredentials {
+                id,
+                secret,
+                scope: Some("openid"),
+            })
             .await?;
         let access_token = token_resp.access_token.clone();
 
@@ -165,6 +169,9 @@ pub enum ClientGrant<'a> {
 
         #[serde(rename = "client_secret")]
         secret: &'a str,
+
+        #[serde(default = "openid")]
+        scope: Option<&'a str>,
     },
 
     #[serde(rename = "refresh_token")]
