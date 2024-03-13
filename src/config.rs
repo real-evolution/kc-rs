@@ -89,7 +89,7 @@ fn build_url(mut base: Url, path: &str) -> Url {
 
 #[inline]
 fn default_http_user_agent() -> String {
-    const USER_AGENT: &'static str =
+    const USER_AGENT: &str =
         concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
 
     String::from(USER_AGENT)
