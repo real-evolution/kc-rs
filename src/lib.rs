@@ -19,6 +19,7 @@ pub use self::{
     jwt::JwtDecoder,
     token::{Claims, TokenData},
 };
+use crate::token::UserInfo;
 
 #[derive(Debug)]
 pub struct ReCloak {
@@ -124,6 +125,42 @@ impl ReCloak {
         *self.token.write().await = Some(token_resp);
 
         Ok(access_token)
+    }
+
+    #[tracing::instrument(skip(self))]
+    pub async fn user_info(&self, token: &str) -> Result<UserInfo> {
+        #[derive(serde::Deserialize)]
+        struct ErrorDto {
+            error: String,
+            error_description: Option<String>,
+        }
+
+        let resp = self
+            .client
+            .get(self.urls.auth.clone())
+            .bearer_auth(token)
+            .send()
+            .await?;
+
+        if resp.status().is_success() {
+            resp.json::<UserInfo>().await.map_err(From::from)
+        } else {
+            let err =
+                resp.json::<ErrorDto>().await.map_err(crate::Error::from)?;
+
+            Err(crate::Error::Authentication {
+                code: err.error,
+                description: err.error_description,
+            })
+        }
+    }
+
+    #[inline]
+    #[tracing::instrument(skip(self))]
+    pub async fn client_info(&self) -> Result<UserInfo> {
+        let token = self.authenticate().await?;
+
+        self.user_info(&token).await
     }
 
     #[inline]

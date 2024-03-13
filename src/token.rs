@@ -5,7 +5,17 @@ use serde_with::TimestampSeconds;
 pub type TokenData = jsonwebtoken::TokenData<Claims>;
 
 #[serde_with::serde_as]
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct UserInfo {
+    #[serde(rename = "sub")]
+    pub subject: uuid::Uuid,
+
+    #[serde(rename = "preferred_username")]
+    pub username: String,
+}
+
+#[serde_with::serde_as]
+#[derive(Debug, Clone, serde::Deserialize)]
 pub struct Claims {
     #[serde(rename = "iss")]
     pub issuer: String,
@@ -38,7 +48,7 @@ pub struct Claims {
     pub resource: HashMap<String, RolesClaim>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, Clone, serde::Deserialize)]
 pub struct RolesClaim {
     #[serde(rename = "roles")]
     pub roles: Vec<String>,

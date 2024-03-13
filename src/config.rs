@@ -46,6 +46,7 @@ pub struct ServerEndpoints {
     pub auth: Url,
     pub token: Url,
     pub introspect: Url,
+    pub userinfo: Url,
     pub jwks: Url,
 }
 
@@ -66,6 +67,7 @@ impl Config {
         let auth = build_url(oidc.clone(), "auth");
         let token = build_url(oidc.clone(), "token");
         let introspect = build_url(oidc.clone(), "introspect");
+        let userinfo = build_url(oidc.clone(), "userinfo");
         let jwks = build_url(oidc.clone(), "certs");
 
         Ok(ServerEndpoints {
@@ -73,6 +75,7 @@ impl Config {
             auth,
             token,
             introspect,
+            userinfo,
             jwks,
         })
     }
