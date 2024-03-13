@@ -137,7 +137,7 @@ impl ReCloak {
 
         let resp = self
             .client
-            .get(self.urls.auth.clone())
+            .get(self.urls.userinfo.clone())
             .bearer_auth(token)
             .send()
             .await?;
