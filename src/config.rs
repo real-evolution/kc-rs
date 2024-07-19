@@ -14,6 +14,8 @@ pub struct Config {
 pub struct ClientConfig {
     pub id: String,
     pub secret: ClientSecret,
+    #[serde(default = "default_scope")]
+    pub scope: String,
     pub realm: String,
 }
 
@@ -93,6 +95,11 @@ fn default_http_user_agent() -> String {
         concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
 
     String::from(USER_AGENT)
+}
+
+#[inline]
+fn default_scope() -> String {
+    "openid".to_owned()
 }
 
 #[inline]

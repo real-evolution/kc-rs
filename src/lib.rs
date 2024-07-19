@@ -112,13 +112,10 @@ impl ReCloak {
         let secret = match self.config.client.secret {
             | config::ClientSecret::Basic(ref secret) => secret,
         };
+        let scope = Some(self.config.client.scope.as_str());
 
         let token_resp = self
-            .login_client(ClientGrant::ClientCredentials {
-                id,
-                secret,
-                scope: Some("openid"),
-            })
+            .login_client(ClientGrant::ClientCredentials { id, secret, scope })
             .await?;
         let access_token = token_resp.access_token.clone();
 
