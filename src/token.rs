@@ -38,6 +38,9 @@ pub struct Claims {
     #[serde(rename = "jti")]
     pub id: uuid::Uuid,
 
+    #[serde(rename = "acr")]
+    pub auth_class_reference: Option<String>,
+
     #[serde(rename = "preferred_username")]
     pub username: String,
 
