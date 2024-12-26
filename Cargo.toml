@@ -43,7 +43,7 @@ version = "3.9"
 features = ["chrono"]
 
 [dependencies.thiserror]
-version = "1.0"
+version = "2.0"
 default-features = false
 
 [dependencies.tokio]
@@ -57,7 +57,7 @@ default-features = false
 optional = true
 
 [dependencies.tower]
-version = "0.4"
+version = "0.5"
 default-features = false
 optional = true
 
