@@ -1,6 +1,7 @@
 use std::{
     future::Future,
     marker::PhantomData,
+    pin::Pin,
     sync::Arc,
     task::{Context, Poll},
 };
@@ -91,7 +92,8 @@ where
     type Error = S::Error;
     type Response = S::Response;
 
-    type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
+    type Future =
+        Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>>>>;
 
     #[inline]
     fn poll_ready(
@@ -105,7 +107,7 @@ where
         let Self { kc, inner, .. } = self.clone();
         let mut inner = std::mem::replace(&mut self.inner, inner);
 
-        async move {
+        Box::pin(async move {
             if req.extensions().get::<crate::Claims>().is_some() {
                 return inner.call(req).await;
             }
@@ -142,7 +144,7 @@ where
             });
 
             inner.call(req).await
-        }
+        })
     }
 }
 
@@ -156,7 +158,8 @@ where
     type Error = S::Error;
     type Response = S::Response;
 
-    type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
+    type Future =
+        Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>>>>;
 
     #[inline]
     fn poll_ready(
@@ -170,7 +173,7 @@ where
         let Self { kc, inner, .. } = self.clone();
         let mut inner = std::mem::replace(&mut self.inner, inner);
 
-        async move {
+        Box::pin(async move {
             if req.extensions().get::<crate::Claims>().is_some() {
                 return inner.call(req).await;
             }
@@ -200,7 +203,7 @@ where
             };
 
             inner.call(req).await
-        }
+        })
     }
 }
 
