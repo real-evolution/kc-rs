@@ -92,8 +92,9 @@ where
     type Error = S::Error;
     type Response = S::Response;
 
-    type Future =
-        Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>>>>;
+    type Future = Pin<
+        Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>,
+    >;
 
     #[inline]
     fn poll_ready(
@@ -158,8 +159,9 @@ where
     type Error = S::Error;
     type Response = S::Response;
 
-    type Future =
-        Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>>>>;
+    type Future = Pin<
+        Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>,
+    >;
 
     #[inline]
     fn poll_ready(
