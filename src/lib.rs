@@ -8,6 +8,7 @@ pub mod middleware;
 
 use std::{ops::Add, sync::Arc};
 
+use reqwest::ClientBuilder;
 use serde_with::DurationSeconds;
 use tokio::sync::RwLock;
 
@@ -38,9 +39,13 @@ impl ReCloak {
             "creating keycloak client",
         );
 
-        let client = reqwest::ClientBuilder::new()
-            .user_agent(&config.http.user_agent)
-            .build()?;
+        let mut builder =
+            ClientBuilder::new().user_agent(&config.http.user_agent);
+        if config.http.allow_insecure {
+            builder = builder.danger_accept_invalid_certs(true);
+        }
+
+        let client = builder.build()?;
 
         let urls = config.urls()?;
         let jwks = Self::get_certs(&client, urls.jwks.clone()).await?;

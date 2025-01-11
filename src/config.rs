@@ -34,6 +34,9 @@ pub struct HttpConfig {
 
     #[serde(default = "default_http_https_only")]
     pub https_only: bool,
+
+    #[serde(default = "default_http_allow_insecure")]
+    pub allow_insecure: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -104,5 +107,10 @@ fn default_scope() -> String {
 
 #[inline]
 fn default_http_https_only() -> bool {
+    false
+}
+
+#[inline]
+fn default_http_allow_insecure() -> bool {
     false
 }
