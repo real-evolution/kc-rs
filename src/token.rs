@@ -49,6 +49,9 @@ pub struct Claims {
 
     #[serde(rename = "resource_access")]
     pub resource: HashMap<String, RolesClaim>,
+
+    #[serde(rename = "scope")]
+    pub scope: String,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -86,5 +89,11 @@ impl Claims {
             .get(client_id.as_ref())
             .map(|r| r.roles.iter().any(|r| r == role.as_ref()))
             .unwrap_or(false)
+    }
+
+    pub fn has_scope(&self, scope: impl AsRef<str>) -> bool {
+        let scope = scope.as_ref();
+
+        self.scope.split_whitespace().any(|s| s.eq(scope))
     }
 }
