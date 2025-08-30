@@ -1,4 +1,5 @@
 use std::{
+    convert::Infallible,
     future::Future,
     marker::PhantomData,
     pin::Pin,
@@ -12,13 +13,11 @@ use tower::{Layer, Service};
 
 const BEARER_TOKEN_PREFIX: &str = "Bearer ";
 
-type BoxError = Box<dyn std::error::Error + Send + Sync>;
+pub type ServerAuthService<S> = AuthService<S, ServerMode>;
+pub type ClientAuthService<S> = AuthService<S, ClientMode>;
 
-pub type ServerAuthService<S, E = BoxError> = AuthService<S, ServerMode, E>;
-pub type ClientAuthService<S, E = BoxError> = AuthService<S, ClientMode, E>;
-
-pub type ServerAuthServiceLayer<E = BoxError> = AuthServiceLayer<ServerMode, E>;
-pub type ClientAuthServiceLayer<E = BoxError> = AuthServiceLayer<ClientMode, E>;
+pub type ServerAuthServiceLayer = AuthServiceLayer<ServerMode>;
+pub type ClientAuthServiceLayer = AuthServiceLayer<ClientMode>;
 
 #[derive(Debug, Clone)]
 pub struct RequestAuthorization {
@@ -35,16 +34,16 @@ pub struct ServerMode;
 pub struct ClientMode;
 
 #[derive(Debug)]
-pub struct AuthService<S, M, E> {
+pub struct AuthService<S, M> {
     kc: Arc<crate::ReCloak>,
     inner: S,
-    _marker: PhantomData<(M, E)>,
+    _marker: PhantomData<M>,
 }
 
 #[derive(Debug, Clone)]
-pub struct AuthServiceLayer<M, E> {
+pub struct AuthServiceLayer<M> {
     kc: Arc<crate::ReCloak>,
-    _marker: PhantomData<(M, E)>,
+    _marker: PhantomData<M>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -56,22 +55,15 @@ enum ServerAuthError {
 
 impl ServerAuthServiceLayer {
     #[inline]
-    pub const fn new<E>(kc: Arc<crate::ReCloak>) -> ServerAuthServiceLayer<E> {
+    pub const fn new(kc: Arc<crate::ReCloak>) -> Self {
         AuthServiceLayer {
             kc,
             _marker: PhantomData,
         }
     }
-
-    #[inline]
-    pub const fn for_grpc(
-        kc: Arc<crate::ReCloak>,
-    ) -> ServerAuthServiceLayer<tonic::Status> {
-        ServerAuthServiceLayer::new(kc)
-    }
 }
 
-impl<E> ClientAuthServiceLayer<E> {
+impl ClientAuthServiceLayer {
     #[inline]
     pub const fn new(kc: Arc<crate::ReCloak>) -> Self {
         AuthServiceLayer {
@@ -81,20 +73,18 @@ impl<E> ClientAuthServiceLayer<E> {
     }
 }
 
-impl<S, E, B> Service<Request<B>> for ServerAuthService<S, E>
+type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+
+impl<S, B> Service<Request<B>> for ServerAuthService<S>
 where
     S: Service<Request<B>> + Clone + Send + 'static,
-    S::Error: From<E>,
+    S::Error: From<ServerAuthError>,
     S::Future: Send + 'static,
     B: Send + 'static,
-    E: From<ServerAuthError>,
 {
     type Error = S::Error;
+    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
     type Response = S::Response;
-
-    type Future = Pin<
-        Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>,
-    >;
 
     #[inline]
     fn poll_ready(
@@ -116,27 +106,27 @@ where
             let auth_header = req
                 .headers()
                 .get(AUTHORIZATION)
-                .ok_or(ServerAuthError::MissingHeader.into())?
+                .ok_or(ServerAuthError::MissingHeader)?
                 .clone();
 
             let header_str = auth_header
                 .to_str()
                 .map_err(|err| {
-                    tracing::error!(error = %err, "failed to parse authorization header");
+                    tracing::warn!(error = %err, "failed to parse authorization header");
 
-                    ServerAuthError::InvalidHeader.into()
+                    ServerAuthError::InvalidHeader
                 })?;
 
             let bearer = header_str
                 .strip_prefix(BEARER_TOKEN_PREFIX)
-                .ok_or(ServerAuthError::InvalidToken.into())?;
+                .ok_or(ServerAuthError::InvalidToken)?;
 
             let token = kc
                 .decode_token(bearer)
-                .map_err(|err| {
-                    tracing::error!(error = %err, "failed to parse authorization header");
+                .map_err(|err| -> _ {
+                    tracing::warn!(error = %err, "failed to parse authorization header");
 
-                    ServerAuthError::InvalidToken.into()
+                    ServerAuthError::InvalidToken
                 })?;
 
             req.extensions_mut().insert(RequestAuthorization {
@@ -149,19 +139,17 @@ where
     }
 }
 
-impl<S, E, B> Service<Request<B>> for ClientAuthService<S, E>
+impl<S, B> Service<Request<B>> for ClientAuthService<S>
 where
     S: Service<Request<B>> + Clone + Send + 'static,
     S::Future: Send + 'static,
-    E: From<S::Error>,
     B: Send + 'static,
 {
     type Error = S::Error;
-    type Response = S::Response;
-
     type Future = Pin<
         Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>,
     >;
+    type Response = S::Response;
 
     #[inline]
     fn poll_ready(
@@ -189,7 +177,7 @@ where
                     buf.put(BEARER_TOKEN_PREFIX.as_bytes());
                     buf.put_slice(token.as_bytes());
 
-                    // Safety: we know the buffer is valid utf-8, since we
+                    // Safety: we know the buffer is valid utf-8, since
                     // the token always comes from a valid source.
                     let value = unsafe {
                         HeaderValue::from_maybe_shared_unchecked(buf.freeze())
@@ -209,8 +197,8 @@ where
     }
 }
 
-impl<S, M, E> Layer<S> for AuthServiceLayer<M, E> {
-    type Service = AuthService<S, M, E>;
+impl<S, M> Layer<S> for AuthServiceLayer<M> {
+    type Service = AuthService<S, M>;
 
     #[inline]
     fn layer(&self, inner: S) -> Self::Service {
@@ -222,7 +210,7 @@ impl<S, M, E> Layer<S> for AuthServiceLayer<M, E> {
     }
 }
 
-impl<S, M, E> Clone for AuthService<S, M, E>
+impl<S, M> Clone for AuthService<S, M>
 where
     S: Clone,
 {
@@ -235,7 +223,7 @@ where
         }
     }
 }
-
+//
 impl std::fmt::Display for ServerAuthError {
     #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -255,6 +243,12 @@ impl From<ServerAuthError> for tonic::Status {
     #[inline]
     fn from(value: ServerAuthError) -> Self {
         tonic::Status::unauthenticated(value.to_string())
+    }
+}
+
+impl From<ServerAuthError> for Infallible {
+    fn from(_: ServerAuthError) -> Self {
+        unreachable!()
     }
 }
 
