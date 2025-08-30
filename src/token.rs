@@ -36,7 +36,7 @@ pub struct Claims {
     pub issued_at: chrono::DateTime<chrono::Utc>,
 
     #[serde(rename = "jti")]
-    pub id: uuid::Uuid,
+    pub id: Option<String>,
 
     #[serde(rename = "acr")]
     pub auth_class_reference: Option<String>,
